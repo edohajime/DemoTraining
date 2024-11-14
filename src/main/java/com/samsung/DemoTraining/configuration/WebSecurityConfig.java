@@ -4,49 +4,42 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.core.userdetails.User;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-import com.samsung.DemoTraining.services.UserService;
+import com.samsung.DemoTraining.jwtutils.JwtAuthenticationEntryPoint;
+
+import static org.springframework.security.config.Customizer.withDefaults;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import com.samsung.DemoTraining.jwtutils.JwtFilter;
+import com.samsung.DemoTraining.jwtutils.JwtUserDetails;
+import com.samsung.DemoTraining.jwtutils.JwtUserDetailsService;
 
 @Configuration
 @EnableWebSecurity
 public class WebSecurityConfig {
+	@Autowired
+	private JwtUserDetailsService userDetailsService;
 	
 	@Autowired
-	UserService userService;
-	
-	@Bean
-	public AuthenticationManager authManager(HttpSecurity http) throws Exception {
-		AuthenticationManagerBuilder authenticationManagerBuilder = http
-				.getSharedObject(AuthenticationManagerBuilder.class);
-		WebAuthenticationProvider authProvider = new WebAuthenticationProvider(userService);
-		authenticationManagerBuilder.authenticationProvider(authProvider);
-		return authenticationManagerBuilder.build();
-	}
+	private JwtAuthenticationEntryPoint authenticationEntryPoint;
 
-//	@Bean
-//	protected UserDetailsService userDetailsService() {
-//		UserDetails user = User.builder()
-//				.username("user")
-//				.password(passwordEncoder().encode("user123"))
-//				.roles("USER")
-//				.build();
-//		UserDetails admin = User.builder()
-//				.username("admin")
-//				.password(passwordEncoder().encode("admin123"))
-//				.roles("USER", "ADMIN").build();
-//		return new InMemoryUserDetailsManager(user, admin);
-//	}
+	@Autowired
+	private JwtFilter filter;
 
 	@Bean
 	public PasswordEncoder passwordEncoder() {
@@ -55,14 +48,31 @@ public class WebSecurityConfig {
 
 	@Bean
 	protected SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-		return http.csrf(AbstractHttpConfigurer::disable)
-				.authorizeRequests(
-						request -> request
-						.requestMatchers("/login").permitAll()
-						.requestMatchers("/add-user", "/mod-user", "/del-user").hasAuthority("ROLE_ADMIN")
-						.requestMatchers("/**").authenticated())
-				.formLogin(form -> form.loginPage("/login").defaultSuccessUrl("/?continue").failureUrl("/login?error=true")
-						.permitAll())
-				.logout(config -> config.logoutUrl("/logout").logoutSuccessUrl("/login?logout=true")).build();
+		return http
+                .cors(withDefaults())
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(
+                        request -> request.requestMatchers("/login").permitAll()
+                                .anyRequest().authenticated())
+                .exceptionHandling(exception -> exception.authenticationEntryPoint(authenticationEntryPoint))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)
+                .build();
 	}
+	
+	@Bean
+	AuthenticationManager customAuthenticationManager() {
+		return authentication -> {
+			String username = authentication.getName();
+			String password = authentication.getCredentials().toString();
+			
+			UserDetails user = userDetailsService.loadUserByUsername(username);
+			if (user == null || !passwordEncoder().matches(password, user.getPassword())) {
+				throw new BadCredentialsException("Invalid username or password");
+			}
+			
+			return new UsernamePasswordAuthenticationToken(username, password, user.getAuthorities());
+		};
+	}
+	
 }
