@@ -13,6 +13,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -34,7 +35,7 @@ import com.samsung.DemoTraining.jwtutils.JwtUserDetailsService;
 public class WebSecurityConfig {
 	@Autowired
 	private JwtUserDetailsService userDetailsService;
-	
+
 	@Autowired
 	private JwtAuthenticationEntryPoint authenticationEntryPoint;
 
@@ -48,31 +49,33 @@ public class WebSecurityConfig {
 
 	@Bean
 	protected SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-		return http
-                .cors(withDefaults())
-                .csrf(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(
-                        request -> request.requestMatchers("/login").permitAll()
-                                .anyRequest().authenticated())
-                .exceptionHandling(exception -> exception.authenticationEntryPoint(authenticationEntryPoint))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)
-                .build();
+		return http.cors(withDefaults()).csrf(AbstractHttpConfigurer::disable)
+				.authorizeHttpRequests(
+						request -> request.requestMatchers("/login").permitAll().anyRequest().authenticated())
+				.exceptionHandling(exception -> exception.authenticationEntryPoint(authenticationEntryPoint))
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)
+				.build();
 	}
-	
+
 	@Bean
 	AuthenticationManager customAuthenticationManager() {
 		return authentication -> {
-			String username = authentication.getName();
-			String password = authentication.getCredentials().toString();
-			
-			UserDetails user = userDetailsService.loadUserByUsername(username);
-			if (user == null || !passwordEncoder().matches(password, user.getPassword())) {
-				throw new BadCredentialsException("Invalid username or password");
+
+			try {
+				String username = authentication.getName();
+				String password = authentication.getCredentials().toString();
+				UserDetails user = userDetailsService.loadUserByUsername(username);
+
+				if (!passwordEncoder().matches(password, user.getPassword())) {
+					throw new BadCredentialsException("password is not correct!");
+				}
+				return new UsernamePasswordAuthenticationToken(username, password, user.getAuthorities());
+			} catch (UsernameNotFoundException e) {
+				throw new BadCredentialsException("username not found!");
 			}
-			
-			return new UsernamePasswordAuthenticationToken(username, password, user.getAuthorities());
+
 		};
 	}
-	
+
 }

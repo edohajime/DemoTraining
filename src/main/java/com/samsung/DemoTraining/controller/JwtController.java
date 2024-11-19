@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -38,6 +41,7 @@ import com.samsung.DemoTraining.utilities.Utilities;
 @CrossOrigin
 @RestController
 public class JwtController {
+	private static final int PAGE_SIZE = 6;
 
 	@Autowired
 	private WebSecurityConfig config;
@@ -55,21 +59,22 @@ public class JwtController {
 	private TokenManager tokenManager;
 
 	@PostMapping("/login")
-	public ResponseEntity<JwtResponseModel> createToken(@RequestBody JwtRequestModel request) throws Exception {
+	public ResponseEntity<MessageResponseModel> createToken(@RequestBody JwtRequestModel request) throws Exception {
 		try {
 			authenticationManager.authenticate(
 					new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword()));
 		} catch (DisabledException e) {
-			throw new Exception("USER_DISABLED", e);
+			return ResponseEntity.ok(new MessageResponseModel(false, e.getMessage()));
 		} catch (BadCredentialsException e) {
-			throw new Exception("INVALID_CREDENTIALS", e);
+			return ResponseEntity.ok(new MessageResponseModel(false, e.getMessage()));
 		}
 
 		final UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
 		final String jwtToken = tokenManager.generateJwtToken(userDetails);
 		final Set<GrantedAuthority> authorities = new HashSet<>();
 		authorities.addAll(userDetails.getAuthorities());
-		return ResponseEntity.ok(new JwtResponseModel(jwtToken, userDetails.getUsername(), authorities));
+		return ResponseEntity
+				.ok(new JwtResponseModel(jwtToken, userDetails.getUsername(), authorities, true, "Login success!"));
 	}
 
 	@PostMapping(value = "/register")
@@ -164,7 +169,7 @@ public class JwtController {
 		userUpdate.setBio(user.getBio());
 
 		userRepo.save(userUpdate);
-		
+
 		msgRes.setStatus(true);
 		msgRes.setMessage("Update profile successfully!");
 		return ResponseEntity.ok(msgRes);
@@ -188,22 +193,22 @@ public class JwtController {
 		}
 
 		userRepo.save(userUpdate);
-		
+
 		msgRes.setStatus(true);
 		msgRes.setMessage("Modify successful");
 		return ResponseEntity.ok(msgRes);
 	}
 
-	@GetMapping(value = "/search-user")
-	public ResponseEntity<List<User>> searchUser(@RequestParam(name = "searchName") String searchName) {
-		List<User> results = userDetailsService.getListUsersBySearchName(searchName);
-
-		return ResponseEntity.ok(results);
-	}
-
 	@GetMapping("/all-users")
-	public ResponseEntity<List<User>> getAllUsers() {
-		List<User> users = userDetailsService.getAllUser();
+	public ResponseEntity<Page<User>> getAllUsers(@RequestParam(name = "page") Integer page,
+			@RequestParam(name = "searchName") String searchName) {
+		Pageable pageable = PageRequest.of(page, PAGE_SIZE);
+		Page<User> users = null;
+		if (searchName != null && searchName != "" && searchName != "*") {
+			users = userDetailsService.getListUsersBySearchName(searchName, pageable);
+		} else {
+			users = userDetailsService.getAllUser(pageable);
+		}
 
 		return ResponseEntity.ok(users);
 	}

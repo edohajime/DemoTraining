@@ -7,19 +7,24 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 //import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.samsung.DemoTraining.configuration.WebSecurityConfig;
 import com.samsung.DemoTraining.repository.UserRepository;
 import com.samsung.DemoTraining.repository.model.User;
 
 @Service
 public class JwtUserDetailsService implements UserDetailsService {
+
 	@Autowired
 	UserRepository userRepo;
 
@@ -31,8 +36,8 @@ public class JwtUserDetailsService implements UserDetailsService {
 		return userRepo.findByUsername(username);
 	}
 
-	public List<User> getAllUser() {
-		return userRepo.findAll();
+	public Page<User> getAllUser(Pageable pageable) {
+		return userRepo.findAll(pageable);
 	}
 
 	/**
@@ -52,22 +57,9 @@ public class JwtUserDetailsService implements UserDetailsService {
 		return contain;
 	}
 
-	public List<User> getListUsersBySearchName(String searchName) {
-		List<User> allUsers = userRepo.findAll();
-		if (searchName.equals("*")) {
-			return allUsers;
-		}
-		return search(allUsers, searchName);
-	}
-
-	private List<User> search(List<User> allUsers, String searchName) {
-		List<User> results = new ArrayList<>();
-		allUsers.forEach(user -> {
-			if (user.getUsername().contains(searchName)) {
-				results.add(user);
-			}
-		});
-		return results;
+	public Page<User> getListUsersBySearchName(String searchName, Pageable pageable) {
+		Page<User> allUsers = userRepo.findAllByUsernameLike(searchName, pageable);
+		return allUsers;
 	}
 
 	@Override
@@ -77,7 +69,7 @@ public class JwtUserDetailsService implements UserDetailsService {
 			Set<GrantedAuthority> authorities = new HashSet<>();
 			User user = new User();
 			user.setUsername("nn.tien");
-			user.setPassword("123456");
+			user.setPassword(new BCryptPasswordEncoder().encode("123456"));
 			authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
 			authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
 			user.setAuthorities(authorities);
